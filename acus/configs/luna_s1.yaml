@@ -1,0 +1,68 @@
+# OrbitRefine LUNA Stage-1: learnable orbit completion (no vol refine yet)
+model:
+  encoder: mae
+  mae_ckpt: pretrained/mae_pretrain_vit_base.pth
+  img_size: 224
+  fuse_depth: 2
+  vol_res: 64
+  proj_hw: 224
+  vol_hw: 32
+  n_samples: 16
+  use_world: false
+  use_vol_refine: false
+  skip_mode: lerp
+  pred_kind: ensemble
+  pred_depth: 6
+  fuse_tau: 0.10
+  fuse_topk: 2
+  drop_obs_p: 0.15
+  near_mix: true
+  freeze_encoder: true
+  freeze_2d: false
+
+data:
+  roots:
+    - datasets/LUNA16
+    - datasets/LUNA25
+  num_query: 6
+  p_sparse: 0.55
+  k_min: 6
+  k_max: 12
+  eval_k_min: 6
+  eval_k_max: 12
+  # multi short arcs (not one long limited arc)
+  use_multi_arc: true
+  n_arcs_min: 2
+  n_arcs_max: 3
+  arc_min: 25.0
+  arc_max: 45.0
+  far_frac: 0.25
+
+loss:
+  lambda_ssim: 0.25
+  lambda_grad: 0.2
+  lambda_proj: 0.0
+  lambda_jepa: 0.05
+  lambda_reproj: 0.0
+  lambda_vol: 0.0
+  lambda_sparse: 0.0
+
+eval:
+  xwin_ref: 28.32
+
+train:
+  batch_size: 1
+  num_workers: 4
+  lr: 8.0e-5
+  lr_encoder: 1.0e-5
+  weight_decay: 0.05
+  max_steps: 10000
+  log_every: 20
+  eval_every: 250
+  eval_batches: 40
+  keep_step_ckpts: 2
+  abort_after: 500
+  abort_near: 29.3
+  abort_overall: 27.5
+  init_from: null
+  outdir: outputs

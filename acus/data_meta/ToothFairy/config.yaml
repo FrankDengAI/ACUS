@@ -1,0 +1,21 @@
+dataset:
+  spacing: [0.54257813, 0.54257813, 0.20859375]
+  value_range: [-1000, 3000]
+  resolution: [256, 256, 256]
+  block_size: [64, 64, 64]
+
+projector:
+  n_porjections: 50
+  DSD: 900
+  DSO: 1000
+  nDetector: [256, 256]
+  dDetector: [0.20859375, 0.54257813]
+  nVoxel: [256, 256, 256]
+  dVoxel: [0.54257813, 0.54257813, 0.20859375]
+  offOrigin: [0, 0, 0]
+  offDetector: [0, 0]
+  accuracy: 0.5
+  mode: cone
+  filter: null
+  total_angle: 180
+  start_angle: 0

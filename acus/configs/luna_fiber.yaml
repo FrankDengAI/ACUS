@@ -1,0 +1,69 @@
+# Measurement fiber on LUNA. Mean + per-pixel scale. Near-angle mix is off.
+model:
+  encoder: mae
+  mae_ckpt: pretrained/mae_pretrain_vit_base.pth
+  img_size: 224
+  fuse_depth: 2
+  vol_res: 64
+  proj_hw: 224
+  vol_hw: 32
+  n_samples: 16
+  use_world: false
+  use_vol_refine: false
+  use_fiber: true
+  skip_mode: lerp
+  pred_kind: ensemble
+  pred_depth: 6
+  fuse_tau: 0.10
+  fuse_topk: 2
+  drop_obs_p: 0.15
+  near_mix: false
+  freeze_encoder: true
+  freeze_2d: false
+
+data:
+  roots:
+    - datasets/LUNA16
+    - datasets/LUNA25
+  num_query: 4
+  p_sparse: 0.55
+  k_min: 6
+  k_max: 10
+  eval_k_min: 6
+  eval_k_max: 10
+  use_multi_arc: true
+  n_arcs_min: 2
+  n_arcs_max: 3
+  arc_min: 25.0
+  arc_max: 45.0
+  far_frac: 0.25
+
+loss:
+  lambda_point: 0.15
+  lambda_ssim: 0.05
+  lambda_grad: 0.05
+  lambda_proj: 0.0
+  lambda_jepa: 0.0
+  lambda_reproj: 0.0
+  lambda_vol: 0.0
+  lambda_sparse: 0.0
+  lambda_nll: 1.0
+  lambda_collapse: 1.0
+
+eval:
+  xwin_ref: 28.32
+
+train:
+  batch_size: 1
+  num_workers: 4
+  lr: 8.0e-5
+  lr_encoder: 1.0e-5
+  weight_decay: 0.05
+  max_steps: 8000
+  log_every: 20
+  eval_every: 400
+  eval_batches: 16
+  keep_step_ckpts: 2
+  abort_after: 0
+  init_from: null
+  outdir: outputs
