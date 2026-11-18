@@ -5,11 +5,6 @@
 <h3 align="center">An interval for the angle that was not acquired.</h3>
 
 <p align="center">
-<code>3.29 × scale</code> + <code>20 × exceedance</code><br>
-Width follows the gap. A miss is charged again. A static scale fails far away.
-</p>
-
-<p align="center">
   <img src="assets/Fig2.png" alt="Model and training" width="100%">
 </p>
 
