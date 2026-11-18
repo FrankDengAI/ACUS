@@ -1,4 +1,3 @@
-# Measurement fiber on ToothFairy. Same objective as luna_fiber, separate specialist.
 model:
   encoder: mae
   mae_ckpt: pretrained/mae_pretrain_vit_base.pth

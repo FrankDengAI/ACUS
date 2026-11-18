@@ -1,4 +1,3 @@
-"""Sample sparse / limited-arc orbits from dense 50-view pickles. Relative angles."""
 from __future__ import annotations
 
 import json
@@ -16,7 +15,6 @@ try:
 except Exception:
     sitk = None
 
-
 def load_pickle(path: Path) -> tuple[np.ndarray, np.ndarray]:
     with open(path, "rb") as f:
         data = pickle.load(f)
@@ -33,7 +31,6 @@ def load_pickle(path: Path) -> tuple[np.ndarray, np.ndarray]:
         projs = projs[:, None]
     return projs, angles
 
-
 def load_volume(path: Path, res: int = 64) -> np.ndarray:
     if sitk is None or not path.is_file():
         return np.zeros((res, res, res), np.float32)
@@ -44,7 +41,6 @@ def load_volume(path: Path, res: int = 64) -> np.ndarray:
     t = torch.nn.functional.interpolate(t, size=(res, res, res), mode="trilinear", align_corners=False)
     return t[0, 0].numpy()
 
-
 def sample_sparse(n: int, k: int, rng: random.Random, npr: np.random.RandomState) -> np.ndarray:
     if rng.random() < 0.3:
         return np.sort(npr.choice(n, size=min(k, n), replace=False))
@@ -52,7 +48,6 @@ def sample_sparse(n: int, k: int, rng: random.Random, npr: np.random.RandomState
     max_off = max(n - idx[-1] - 1, 0)
     off = rng.randint(0, max_off) if max_off > 0 else 0
     return idx + off
-
 
 def sample_limited(n: int, angles: np.ndarray, arc_deg: float, rng: random.Random) -> np.ndarray:
     span = float(angles.max() - angles.min()) or np.pi
@@ -66,7 +61,6 @@ def sample_limited(n: int, angles: np.ndarray, arc_deg: float, rng: random.Rando
         idx = np.arange(s, s + k)
     return idx
 
-
 def sample_multi_arc(
     n: int,
     angles: np.ndarray,
@@ -77,7 +71,7 @@ def sample_multi_arc(
     arc_min_deg: float = 25.0,
     arc_max_deg: float = 45.0,
 ) -> np.ndarray:
-    """Several short arcs instead of one long limited arc (avoids pure opposite extrapolation)."""
+
     n_arcs = int(max(2, min(n_arcs, 3)))
     span = float(angles.max() - angles.min()) or np.pi
     rel = (angles - angles.min()) % (span + 1e-6)
@@ -99,7 +93,6 @@ def sample_multi_arc(
     if len(idx) > k:
         idx = np.sort(npr.choice(idx, size=k, replace=False))
     return np.sort(idx)
-
 
 def pick_queries(rest: np.ndarray, angles: np.ndarray, obs_idx: np.ndarray, num_query: int, npr, far_frac: float) -> np.ndarray:
     if len(rest) < num_query:
@@ -124,7 +117,6 @@ def pick_queries(rest: np.ndarray, angles: np.ndarray, obs_idx: np.ndarray, num_
         remain = rest
     chosen_rest = npr.choice(remain, size=n_rest, replace=len(remain) < n_rest)
     return np.concatenate([np.atleast_1d(chosen_far), np.atleast_1d(chosen_rest)])[:num_query]
-
 
 class CBCTOrbitDataset(Dataset):
     def __init__(
@@ -258,7 +250,6 @@ class CBCTOrbitDataset(Dataset):
             "name": name,
             "domain": path.parents[2].name if path.parents[2].name else geo,
         }
-
 
 def collate_cbct(batch: list[dict[str, Any]]) -> dict[str, Any]:
     max_v = max(x["obs_views"].shape[0] for x in batch)

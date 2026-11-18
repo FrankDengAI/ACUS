@@ -4,7 +4,6 @@ from typing import Optional
 
 from .mae_vit import load_mae_encoder, vit_base_patch16
 
-
 def build_encoder(name: str, mae_ckpt: Optional[str] = None, img_size: int = 224):
     name = name.lower()
     if name in {"mae", "mae_gray"}:

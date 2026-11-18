@@ -1,4 +1,3 @@
-"""Save input / held-out query / world-volume slice grids."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -7,7 +6,6 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-
 def _to_np(img: torch.Tensor) -> np.ndarray:
     x = img.detach().float().cpu().clamp(0, 1).numpy()
     if x.ndim == 4:
@@ -15,7 +13,6 @@ def _to_np(img: torch.Tensor) -> np.ndarray:
     elif x.ndim == 3:
         x = x[0]
     return x
-
 
 def _hstack(imgs: list[np.ndarray], pad: int = 2) -> np.ndarray:
     h = max(a.shape[0] for a in imgs)
@@ -28,7 +25,6 @@ def _hstack(imgs: list[np.ndarray], pad: int = 2) -> np.ndarray:
         rows.append(a)
         rows.append(np.ones((h, pad), np.float32))
     return np.concatenate(rows[:-1], axis=1)
-
 
 def save_case_panel(
     out_path: Path,
@@ -43,7 +39,7 @@ def save_case_panel(
     fdk_obs: torch.Tensor | None = None,
     fdk_fill: torch.Tensor | None = None,
 ) -> None:
-    """obs [K,1,H,W]; queries [Q,1,H,W]; vol [1,D,H,W]."""
+
     import matplotlib
 
     matplotlib.use("Agg")
@@ -103,7 +99,6 @@ def save_case_panel(
     fig.savefig(out_path, dpi=110)
     plt.close(fig)
 
-
 def plot_curves(jsonl_path: Path, out_path: Path) -> None:
     import json
 
@@ -159,7 +154,6 @@ def plot_curves(jsonl_path: Path, out_path: Path) -> None:
     fig.tight_layout()
     fig.savefig(out_path, dpi=110)
     plt.close(fig)
-
 
 def prune_old_vis(vis_dir: Path, keep_evals: int = 2) -> None:
     files = sorted(vis_dir.glob("step*.png"), key=lambda p: p.stat().st_mtime)

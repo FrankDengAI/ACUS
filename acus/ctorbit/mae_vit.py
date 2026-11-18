@@ -1,5 +1,3 @@
-"""MAE-compatible ViT-B/16 encoder (ImageNet unsupervised pretrain)."""
-
 from __future__ import annotations
 
 from functools import partial
@@ -7,10 +5,8 @@ from functools import partial
 import torch
 import torch.nn as nn
 
-
 def _to_2tuple(x: int) -> tuple[int, int]:
     return (x, x)
-
 
 class PatchEmbed(nn.Module):
     def __init__(self, img_size=224, patch_size=16, in_chans=3, embed_dim=768):
@@ -26,7 +22,6 @@ class PatchEmbed(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.proj(x)
         return x.flatten(2).transpose(1, 2)
-
 
 class Attention(nn.Module):
     def __init__(self, dim, num_heads=12, qkv_bias=True, attn_drop=0.0, proj_drop=0.0):
@@ -50,7 +45,6 @@ class Attention(nn.Module):
         x = self.proj(x)
         return self.proj_drop(x)
 
-
 class MLP(nn.Module):
     def __init__(self, in_features, hidden_features=None, drop=0.0):
         super().__init__()
@@ -63,7 +57,6 @@ class MLP(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.drop(self.act(self.fc1(x)))
         return self.drop(self.fc2(x))
-
 
 class Block(nn.Module):
     def __init__(self, dim, num_heads, mlp_ratio=4.0, qkv_bias=True, drop=0.0, attn_drop=0.0,
@@ -81,7 +74,6 @@ class Block(nn.Module):
         x = x + self.drop_path(self.mlp(self.norm2(x)))
         return x
 
-
 class DropPath(nn.Module):
     def __init__(self, drop_prob: float = 0.0):
         super().__init__()
@@ -95,7 +87,6 @@ class DropPath(nn.Module):
         mask = keep + torch.rand(shape, dtype=x.dtype, device=x.device)
         mask.floor_()
         return x.div(keep) * mask
-
 
 class VisionTransformer(nn.Module):
     def __init__(
@@ -142,7 +133,7 @@ class VisionTransformer(nn.Module):
             nn.init.ones_(m.weight)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Return tokens including CLS: [B, 1+N, C]."""
+
         b = x.shape[0]
         x = self.patch_embed(x)
         cls = self.cls_token.expand(b, -1, -1)
@@ -155,7 +146,6 @@ class VisionTransformer(nn.Module):
     def forward_features(self, x: torch.Tensor) -> torch.Tensor:
         tokens = self.forward(x)
         return tokens[:, 0]
-
 
 def interpolate_pos_embed(model: VisionTransformer, checkpoint_model: dict) -> None:
     if "pos_embed" not in checkpoint_model:
@@ -177,25 +167,21 @@ def interpolate_pos_embed(model: VisionTransformer, checkpoint_model: dict) -> N
     pos_tokens = pos_tokens.permute(0, 2, 3, 1).flatten(1, 2)
     checkpoint_model["pos_embed"] = torch.cat((extra_tokens, pos_tokens), dim=1)
 
-
 def vit_base_patch16(**kwargs) -> VisionTransformer:
     return VisionTransformer(
         patch_size=16, embed_dim=768, depth=12, num_heads=12, mlp_ratio=4, qkv_bias=True, **kwargs
     )
 
-
 MAE_VITB_MD5 = "8cad7c8458a98d92977cf31e98c74644"
 
-
 def adapt_patch_embed_rgb_to_gray(state: dict) -> dict:
-    """ImageNet MAE is 3-channel. Average RGB kernels into a native 1-channel conv."""
+
     key = "patch_embed.proj.weight"
     w = state[key]
     if w.ndim == 4 and w.shape[1] == 3:
         state = dict(state)
         state[key] = w.mean(dim=1, keepdim=True)
     return state
-
 
 def load_mae_encoder(
     checkpoint_path: str,

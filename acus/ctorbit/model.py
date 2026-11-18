@@ -1,4 +1,3 @@
-"""Hybrid: X-WIN-style action predictor (all patch tokens → pixels) + triplane world P_a(V)."""
 from __future__ import annotations
 
 import copy
@@ -14,7 +13,6 @@ from .encoder import build_encoder
 from .mae_vit import Block
 from .projector import backproject, cone_project, fdk_backproject, sample_cone_rays, unit_range, voxel_centers, world_to_uv
 
-
 def fourier_angle(angles: torch.Tensor, dim: int = 64) -> torch.Tensor:
     half = dim // 2
     freq = torch.arange(half, device=angles.device, dtype=angles.dtype)
@@ -22,9 +20,8 @@ def fourier_angle(angles: torch.Tensor, dim: int = 64) -> torch.Tensor:
     ang = angles.unsqueeze(-1)
     return torch.cat([torch.sin(ang * freq), torch.cos(ang * freq)], dim=-1)
 
-
 def sincos_2d(n: int, dim: int, device, dtype) -> torch.Tensor:
-    """X-WIN-style 2D sine-cosine positional embedding, [n*n, dim]."""
+
     g = int(n ** 0.5)
     y, x = torch.meshgrid(
         torch.arange(g, device=device, dtype=dtype),
@@ -41,9 +38,7 @@ def sincos_2d(n: int, dim: int, device, dtype) -> torch.Tensor:
         emb = F.pad(emb, (0, dim - emb.shape[-1]))
     return emb
 
-
 class PixelHead(nn.Module):
-    """14x14 tokens → HxW. Bilinear upsample + conv (no ConvTranspose checkerboard)."""
 
     def __init__(self, dim=768, out_size=224, use_aux=False):
         super().__init__()
@@ -87,7 +82,7 @@ class PixelHead(nn.Module):
             if gap_deg is None:
                 gain = skip.new_full((b, q, 1, 1, 1), 0.5)
             else:
-                # Identity skip below ~8°. Residual only turns on as the angular hole grows.
+
                 gate = ((gap_deg - 8.0) / 12.0).clamp(0, 1)
                 gain = gate * (0.2 + 1.6 * (gap_deg / 70.0).clamp(0, 1))
                 gain = gain.view(b, q, 1, 1, 1)
@@ -101,9 +96,7 @@ class PixelHead(nn.Module):
             y = y.view(b, q, 1, self.out_size, self.out_size)
         return y
 
-
 class ScaleHead(nn.Module):
-    """Per-pixel log-scale of the query-view distribution. Zero residual, bias log(0.08)."""
 
     def __init__(self, dim=768, out_size=224):
         super().__init__()
@@ -129,13 +122,10 @@ class ScaleHead(nn.Module):
         x = self.up(self.proj(x))
         if x.shape[-1] != self.out_size:
             x = F.interpolate(x, size=self.out_size, mode="bilinear", align_corners=False)
-        # Images live in [0, 1]. Cap the scale so a wide fiber stays wide
-        # without a variance that covers every possible projection.
+
         return x.view(b, q, 1, self.out_size, self.out_size).clamp(-6.0, math.log(0.35))
 
-
 class FlowHead(nn.Module):
-    """Zero-init 2D warp from tokens. Identity at step 0, then deforms lerp skip."""
 
     def __init__(self, dim=768, out_size=224):
         super().__init__()
@@ -167,9 +157,8 @@ class FlowHead(nn.Module):
             flow = flow * gate
         return flow
 
-
 def warp_imgs(img: torch.Tensor, flow: torch.Tensor) -> torch.Tensor:
-    """img [B,Q,1,H,W]; flow [B,Q,2,H,W] in normalized coords."""
+
     b, q, c, h, w = img.shape
     yy, xx = torch.meshgrid(
         torch.linspace(-1, 1, h, device=img.device, dtype=img.dtype),
@@ -187,9 +176,7 @@ def warp_imgs(img: torch.Tensor, flow: torch.Tensor) -> torch.Tensor:
     )
     return out.view(b, q, c, h, w)
 
-
 class GeoMixWide(nn.Module):
-    """Frozen-xwin residual with more hint channels (P(V), lerp skip, |2d-3d|). Last layer zero-init."""
 
     def __init__(self, hid=32):
         super().__init__()
@@ -216,14 +203,7 @@ class GeoMixWide(nn.Module):
         g = ((gap_deg - 12.0) / 28.0).clamp(0, 1).view(b, q, 1, 1, 1)
         return (img2d + g * torch.tanh(r)).clamp(0, 1)
 
-
 class GeoMixHead(nn.Module):
-    """Zero-init residual: start exactly at frozen xwin, use P(V) as a geometric hint.
-
-    Raw P(V) from sparse UBP is ~15 dB on far queries (worse than xwin 18.5), so it must
-    not replace the 2D prediction. A 2-channel conv can copy xwin and only add 3D where
-    it reduces error.
-    """
 
     def __init__(self):
         super().__init__()
@@ -248,14 +228,7 @@ class GeoMixHead(nn.Module):
         g = ((gap_deg - 12.0) / 28.0).clamp(0, 1).view(b, q, 1, 1, 1)
         return (img2d + g * torch.tanh(r)).clamp(0, 1)
 
-
 class WorldUnproject(nn.Module):
-    """Lift K views into a 3D attenuation field.
-
-    kind=bp: intensity backprojection only (v3).
-    kind=unet: intensity + patch-feature BP, 3D UNet residual (zero-init → starts at bp).
-    kind=triplane: axis-aligned planes from BP features, MLP residual (zero-init → bp).
-    """
 
     def __init__(self, dim=768, feat_ch=8, res=64, kind="bp"):
         super().__init__()
@@ -315,7 +288,7 @@ class WorldUnproject(nn.Module):
                 d2 = F.interpolate(d2, size=e1.shape[-3:], mode="trilinear", align_corners=False)
             delta = self.dec1(torch.cat([d2, e1], dim=1))
             return (base + 0.4 * torch.tanh(delta)).clamp(0, 1)
-        # triplane: volume layout [B,C,Z,Y,X]
+
         xy = self.plane_xy(torch.cat([i_vol.mean(2), f_vol.mean(2)], dim=1))
         xz = self.plane_xz(torch.cat([i_vol.mean(3), f_vol.mean(3)], dim=1))
         yz = self.plane_yz(torch.cat([i_vol.mean(4), f_vol.mean(4)], dim=1))
@@ -327,21 +300,13 @@ class WorldUnproject(nn.Module):
         delta = self.mlp(h).permute(0, 4, 1, 2, 3)
         return (base + 0.4 * torch.tanh(delta)).clamp(0, 1)
 
-
 def _fourier_xyz(pts: torch.Tensor, n_freq: int = 6) -> torch.Tensor:
-    """NeRF-style positional encoding, pts [..., 3] in [-1, 1] → [..., 6*n_freq]."""
+
     freq = (2.0 ** torch.arange(n_freq, device=pts.device, dtype=pts.dtype)) * 3.14159265
     ang = pts.unsqueeze(-1) * freq
     return torch.cat([ang.sin(), ang.cos()], dim=-1).flatten(-2)
 
-
 class RayWorld(nn.Module):
-    """View-invariant attenuation μ(x) by pooling K observed measurements at x, then P_a(μ).
-
-    This is the CT-OrbitWorld world: a 3D point is explained by every detector that sees it.
-    Unlike intensity backprojection, μ is inferred from multi-view evidence and only then
-    integrated along the *query* cone-beam ray (same quadrature as preprocess).
-    """
 
     def __init__(self, dim=768, feat_ch=16, ray_hw=48, n_samples=24, vol_preview=32):
         super().__init__()
@@ -350,7 +315,7 @@ class RayWorld(nn.Module):
         self.n_samples = n_samples
         self.vol_preview = vol_preview
         self.feat_proj = nn.Sequential(nn.Linear(dim, feat_ch), nn.GELU())
-        in_ch = feat_ch * 2 + 4 + 6 * 6  # mean/max feat, I mean/std/vis/count, xyz PE
+        in_ch = feat_ch * 2 + 4 + 6 * 6
         self.mu_mlp = nn.Sequential(
             nn.Linear(in_ch, 64),
             nn.GELU(),
@@ -376,7 +341,7 @@ class RayWorld(nn.Module):
         return fmap, inten
 
     def mu_at(self, pts, fmap, inten, abs_obs, obs_mask, geo) -> torch.Tensor:
-        """pts [B,N,3] → μ [B,N,1] ≥ 0."""
+
         b, n, _ = pts.shape
         k = fmap.size(1)
         acc_f = pts.new_zeros(b, self.feat_ch, n)
@@ -424,7 +389,7 @@ class RayWorld(nn.Module):
         return F.softplus(self.mu_mlp(h))
 
     def render(self, patches, obs_views, abs_obs, obs_mask, query_abs, geo, geo_id=0, leave_one_out=False):
-        """Integrate μ along query rays. query_abs [B,Q]. Returns [B,Q,1,H,W] in [0,1]."""
+
         if patches.size(1) != obs_views.size(1):
             k = min(patches.size(1), obs_views.size(1))
             patches = patches[:, :k]
@@ -473,14 +438,7 @@ class RayWorld(nn.Module):
         mx = mu.amax(dim=1, keepdim=True).clamp_min(1e-4)
         return (mu / mx).view(b, 1, r, r, r)
 
-
 class ViewPredictor(nn.Module):
-    """X-WIN g_v, adapted to K observed views + explicit query mask tokens.
-
-    X-WIN forward_view: action token + source patches → transformed patches (then they mean-pool).
-    We keep the action+context transformer, but also decode 14×14 query tokens with 2D sincos
-    so a pixel head can emit a measurement instead of a pooled embedding.
-    """
 
     def __init__(self, dim=768, pred_dim=384, depth=4, n_patches=196, n_heads=12):
         super().__init__()
@@ -503,7 +461,7 @@ class ViewPredictor(nn.Module):
         obs_mask: Optional[torch.Tensor] = None,
         obs_rel: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        """patches [B,V,N,C]; query_rel [B,Q] → [B,Q,N,C_enc]"""
+
         b, v, n, c = patches.shape
         q = query_rel.shape[1]
         ctx = self.ctx_proj(patches) + self.pos2d.to(dtype=patches.dtype)
@@ -519,14 +477,7 @@ class ViewPredictor(nn.Module):
         x = self.norm(x)
         return self.out_proj(x[:, -self.n_patches :]).view(b, q, self.n_patches, -1)
 
-
 class XWinViewPredictor(nn.Module):
-    """Paper g_v: Linear(a) ⊕ source patches, transform in place (forward_view).
-
-    Action is the signed yaw from the nearest observed view to the query, as in X-WIN.
-    Extra observed views are appended as context (incomplete orbit). Output tokens are
-    the transformed source patches, not a separate mask stream.
-    """
 
     def __init__(self, dim=768, pred_dim=384, depth=6, n_patches=196, n_heads=12):
         super().__init__()
@@ -577,7 +528,7 @@ class XWinViewPredictor(nn.Module):
         return self.out_proj(x[:, 1 : 1 + n]).view(b, q, n, -1)
 
     def forward_one(self, patches_1: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
-        """Official forward_view: one source [B,N,C] + signed yaw [B] → [B,N,C]."""
+
         if patches_1.dim() == 4:
             patches_1 = patches_1[:, 0]
         n = patches_1.size(1)
@@ -589,9 +540,7 @@ class XWinViewPredictor(nn.Module):
         x = self.norm(x)
         return self.out_proj(x[:, 1 : 1 + n])
 
-
 class VolUNet(nn.Module):
-    """Legacy light residual UNet (kept for loading old s2 ckpts)."""
 
     def __init__(self, in_ch=2, base=16):
         super().__init__()
@@ -628,21 +577,13 @@ class VolUNet(nn.Module):
         y = self.d1(torch.cat([self.u1(y), e1], dim=1))
         return (fdk_fill + self.out(y)).clamp(0, 1)
 
-
 class VolDetailRefiner(nn.Module):
-    """OrbitRefine Stage-2: global multi-scale refine + local residual enhancer.
-
-    Framed as our volumetric detail refinement (not an off-the-shelf 2D GAN name).
-    Input: FDK_obs, FDK_fill → sharp volume in [0,1].
-    Uses GroupNorm (AMP-safe) and float32 refine path — InstanceNorm3d on near-constant
-    FDK backgrounds often NaNs under fp16 autocast.
-    """
 
     def __init__(self, in_ch=2, base=16):
         super().__init__()
 
         def gn(ch: int) -> nn.GroupNorm:
-            # Prefer 8 groups; fall back so ch % g == 0.
+
             for g in (8, 4, 2, 1):
                 if ch % g == 0:
                     return nn.GroupNorm(g, ch)
@@ -658,7 +599,6 @@ class VolDetailRefiner(nn.Module):
                 nn.GELU(),
             )
 
-        # global pathway (coarser context)
         self.e1 = block(in_ch, base)
         self.p1 = nn.MaxPool3d(2)
         self.e2 = block(base, base * 2)
@@ -676,7 +616,6 @@ class VolDetailRefiner(nn.Module):
         nn.init.zeros_(self.g_out.weight)
         nn.init.zeros_(self.g_out.bias)
 
-        # local enhancer on full-res residual (high-frequency)
         self.local = nn.Sequential(
             nn.Conv3d(in_ch + 1, base, 3, padding=1),
             nn.GELU(),
@@ -689,7 +628,7 @@ class VolDetailRefiner(nn.Module):
         nn.init.zeros_(self.local[-1].bias)
 
     def forward(self, fdk_obs: torch.Tensor, fdk_fill: torch.Tensor) -> torch.Tensor:
-        # Refine in fp32 for numerical stability under autocast.
+
         out_dtype = fdk_fill.dtype
         fdk_obs = torch.nan_to_num(fdk_obs.float(), nan=0.0, posinf=1.0, neginf=0.0).clamp(0, 1)
         fdk_fill = torch.nan_to_num(fdk_fill.float(), nan=0.0, posinf=1.0, neginf=0.0).clamp(0, 1)
@@ -705,9 +644,7 @@ class VolDetailRefiner(nn.Module):
         detail = self.local(torch.cat([x, coarse], dim=1))
         return (coarse + 0.5 * detail).clamp(0, 1).to(out_dtype)
 
-
 class SlicePatchDisc(nn.Module):
-    """2.5D slice Patch discriminator for volumetric detail (ax/cor/sag crops)."""
 
     def __init__(self, in_ch=1, base=32):
         super().__init__()
@@ -725,7 +662,6 @@ class SlicePatchDisc(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.net(x)
-
 
 class CTOrbitWorld(nn.Module):
     def __init__(
@@ -948,7 +884,7 @@ class CTOrbitWorld(nn.Module):
         return fdk_backproject(views, angles, self.geos[key], self.vol_res, mask)
 
     def _vol_refine(self, obs_views, pred_pix, abs_obs, abs_q, obs_mask, geo_ids):
-        """FDK(obs) and FDK(obs+pred views) → 3D UNet. Two-channel de-artifacting."""
+
         b = obs_views.size(0)
         if not (geo_ids == geo_ids[:1]).all():
             outs = [
@@ -988,7 +924,7 @@ class CTOrbitWorld(nn.Module):
         return vol, fdk_obs, fdk_fill
 
     def _maybe_drop_obs(self, obs_mask, obs_rel, query_rel):
-        """Train-time K=1 dropout: force the official single-view X-WIN path."""
+
         if (not self.training) or self.drop_obs_p <= 0 or obs_mask is None:
             return obs_mask
         b = obs_mask.size(0)
@@ -1001,11 +937,7 @@ class CTOrbitWorld(nn.Module):
         return obs_mask * (use * k1 + (1.0 - use))
 
     def _ensemble_xwin(self, patches, obs_views, obs_rel, query_rel, obs_mask):
-        """Independent X-WIN g_v per observed view, then angular softmax fusion.
 
-        K=1 reduces to official X-WIN (one source + signed yaw). Extra views cannot
-        be ignored: each branch is a full single-view transform of that measurement.
-        """
         b, k, n, c = patches.shape
         q = query_rel.shape[1]
         delta = (query_rel.unsqueeze(-1) - obs_rel.unsqueeze(1) + math.pi) % (2 * math.pi) - math.pi
@@ -1035,7 +967,7 @@ class CTOrbitWorld(nn.Module):
         )
         imgs = imgs.view(b, q, k, 1, hw, hw)
         tok = tok.view(b, q, k, n, c)
-        # Direct tau in radians (NOT softplus — v8's softplus(0.35)≈30° mixed away near-angle).
+
         tau = self.fuse_tau.abs().clamp(0.04, 0.22)
         fuse_d = adist
         kk = min(self.fuse_topk, k) if self.fuse_topk > 0 else k

@@ -10,7 +10,6 @@ MISS_FACTOR = 20.0
 SCALE_FLOOR = math.exp(-6.0)
 SCALE_CEIL = 0.35
 
-
 class ScaleHead(nn.Module):
     def __init__(self, dim=768, out_size=224):
         super().__init__()
@@ -38,40 +37,32 @@ class ScaleHead(nn.Module):
             x = F.interpolate(x, size=self.out_size, mode="bilinear", align_corners=False)
         return x.view(b, q, 1, self.out_size, self.out_size).clamp(-6.0, math.log(SCALE_CEIL))
 
-
 def gaussian_nll(mu, log_scale, target):
     log_var = (2.0 * log_scale).clamp(-8.0, math.log(SCALE_CEIL) * 2)
     inv = torch.exp(-log_var)
     return (0.5 * (log_var + (mu - target).pow(2) * inv)).mean()
 
-
 def collapse_loss(mu_acquired, scale_acquired, target_acquired):
     return (mu_acquired - target_acquired).abs().mean() + scale_acquired.mean()
-
 
 def coverage_loss(mu, scale, target, rate=0.90):
     slack = 8.0 * (Z90 * scale - (mu - target).abs())
     soft = torch.sigmoid(slack).mean()
     return torch.relu(mu.new_tensor(rate) - soft)
 
-
 def interval(mu, scale):
     half = Z90 * scale
     return mu - half, mu + half
-
 
 def coverage(mu, scale, target):
     lo, hi = interval(mu, scale)
     return ((target >= lo) & (target <= hi)).float().mean()
 
-
 def exceedance(mu, scale, target):
     return torch.relu((mu - target).abs() - Z90 * scale).mean()
 
-
 def acus(scale, mu, target):
     return WIDTH_FACTOR * scale.mean() + MISS_FACTOR * exceedance(mu, scale, target)
-
 
 def fiber_loss(mu, log_scale, scale, target, mu_acquired, scale_acquired, target_acquired, lambda_nll=1.0, lambda_collapse=1.0, lambda_cover=0.0, lambda_point=1.0, lambda_grad=0.05):
     l_point = (mu - target).abs().mean()

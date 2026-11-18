@@ -1,9 +1,3 @@
-"""OrbitRefine main results: Table 1 (K=8) and Fig. 2/3.
-
-Protocol: held-out eval cases, all unobserved views as queries.
-Near < 20°, far >= 40°. 90% Gaussian interval uses z = 1.64485.
-Lerp/NN widths are a single residual-calibrated constant (unlearned fiber).
-"""
 from __future__ import annotations
 
 import argparse
@@ -30,7 +24,6 @@ Z90 = 1.64485
 NEAR, FAR = 20.0, 40.0
 BINS = [(0, 10), (10, 20), (20, 30), (30, 40), (40, 60), (60, 180)]
 
-
 def resize_views(x: torch.Tensor, hw: int) -> torch.Tensor:
     b, v, c, h, w = x.shape
     if h == hw and w == hw:
@@ -38,17 +31,14 @@ def resize_views(x: torch.Tensor, hw: int) -> torch.Tensor:
     y = F.interpolate(x.flatten(0, 1), size=(hw, hw), mode="bilinear", align_corners=False)
     return y.view(b, v, c, hw, hw)
 
-
 def mean_std(xs: list[float]) -> tuple[float, float, int]:
     arr = np.asarray([x for x in xs if x == x], dtype=np.float64)
     if arr.size == 0:
         return float("nan"), float("nan"), 0
     return float(arr.mean()), float(arr.std(ddof=1) if arr.size > 1 else 0.0), int(arr.size)
 
-
 def cover_hit(pred, gt, scale) -> torch.Tensor:
     return ((pred - gt).abs() <= Z90 * scale).float().mean(dim=(2, 3, 4))
-
 
 def build_model(cfg: dict, device, use_fiber: bool, near_mix: bool) -> CTOrbitWorld:
     geos = {
@@ -79,7 +69,6 @@ def build_model(cfg: dict, device, use_fiber: bool, near_mix: bool) -> CTOrbitWo
     m.eval()
     return m
 
-
 def load_weights(model, path: Path) -> None:
     pack = torch.load(path, map_location="cpu", weights_only=False)
     src = pack["model"] if "model" in pack else pack
@@ -87,7 +76,6 @@ def load_weights(model, path: Path) -> None:
     filtered = {k: v for k, v in src.items() if k in dst and tuple(v.shape) == tuple(dst[k].shape)}
     model.load_state_dict(filtered, strict=False)
     print(f"[load] {path} keys={len(filtered)}/{len(dst)}", flush=True)
-
 
 @torch.no_grad()
 def predict_chunks(model, batch, hw: int, device, q_chunk: int = 6):
@@ -112,7 +100,7 @@ def predict_chunks(model, batch, hw: int, device, q_chunk: int = 6):
     pred = torch.cat(preds, dim=1)
     scale = torch.cat(scales, dim=1) if scales else None
     bl = nearest_and_lerp(obs, obs_rel, qrel, obs_mask, hw)
-    # collapse: query the first valid observed angle
+
     idx = obs_mask[0].argmax()
     qrel_c = obs_rel[:, idx : idx + 1]
     out_c = model(obs, obs_rel, qrel_c, gid, obs_mask=obs_mask, abs_obs=None, a_ref=a_ref, query_views=None)
@@ -122,7 +110,6 @@ def predict_chunks(model, batch, hw: int, device, q_chunk: int = 6):
         "width": float(out_c["scale"].mean()) if "scale" in out_c else float("nan"),
     }
     return pred, scale, qgt, bl, collapse
-
 
 def make_loader(cfg, orbit: str, k: int, n_cases: int) -> DataLoader:
     ds = CBCTOrbitDataset(
@@ -153,9 +140,8 @@ def make_loader(cfg, orbit: str, k: int, n_cases: int) -> DataLoader:
         collate_fn=collate_cbct,
     )
 
-
 def fit_cover_alpha(err: np.ndarray, scale: np.ndarray, target: float = 0.90) -> float:
-    """Scalar temperature so 90% Gaussian intervals hit `target` coverage on cal pixels."""
+
     lo, hi = 0.4, 6.0
     for _ in range(24):
         mid = 0.5 * (lo + hi)
@@ -165,7 +151,6 @@ def fit_cover_alpha(err: np.ndarray, scale: np.ndarray, target: float = 0.90) ->
         else:
             hi = mid
     return float(0.5 * (lo + hi))
-
 
 def run_split(fiber, point, cfg, device, orbit: str, k: int, n_cases: int, n_cal: int):
     hw = cfg["model"]["proj_hw"]
@@ -279,7 +264,7 @@ def run_split(fiber, point, cfg, device, orbit: str, k: int, n_cases: int, n_cal
         return row
 
     def hit_const(r, psnr_key, s):
-        # reconstruct coverage from stored psnr is wrong; recompute from abs
+
         key = {"psnr_lp": "abs_lp", "psnr_nn": "abs_nn", "psnr_p": "abs_p"}[psnr_key]
         return (r[key] <= Z90 * s).astype(np.float32)
 
@@ -348,7 +333,7 @@ def run_split(fiber, point, cfg, device, orbit: str, k: int, n_cases: int, n_cal
             acus_vals.append(float(np.mean(r["acus_f"])))
     if table:
         table[-4]["acus"] = mean_std(acus_vals) if acus_vals else (float("nan"), float("nan"), 0)
-    # Fig. 3: farthest query of first test case
+
     fig3 = None
     if test:
         r0 = test[0]
@@ -364,13 +349,11 @@ def run_split(fiber, point, cfg, device, orbit: str, k: int, n_cases: int, n_cal
         "fig3_hint": fig3,
     }
 
-
 def fmt_ms(ms):
     m, s, n = ms
     if n == 0 or m != m:
         return "—"
     return f"{m:.3f}±{s:.3f}" if "width" else f"{m:.2f}±{s:.2f}"
-
 
 def write_markdown(all_out: dict, path: Path) -> None:
     lines = ["# OrbitRefine main results", "", f"Cases per split: test after {all_out.get('n_cal', 8)} calibration cases.", ""]
@@ -408,7 +391,6 @@ def write_markdown(all_out: dict, path: Path) -> None:
         lines.append("")
     path.write_text("\n".join(lines))
 
-
 def plot_fig2(splits: list, out_png: Path) -> None:
     import matplotlib
     matplotlib.use("Agg")
@@ -439,7 +421,6 @@ def plot_fig2(splits: list, out_png: Path) -> None:
     fig.savefig(out_png, dpi=140)
     plt.close(fig)
 
-
 @torch.no_grad()
 def plot_fig3(fiber, cfg, device, orbit: str, k: int, out_png: Path) -> None:
     import matplotlib
@@ -451,7 +432,7 @@ def plot_fig3(fiber, cfg, device, orbit: str, k: int, out_png: Path) -> None:
     batch = next(iter(loader))
     pred, scale, qgt, bl, _ = predict_chunks(fiber, batch, hw, device)
     gap = bl["gap_deg"][0]
-    # Prefer a far view; fall back to the widest gap in this case.
+
     far = torch.where(gap >= 40.0)[0]
     j = int(far[0].item()) if far.numel() else int(torch.argmax(gap).item())
     mu = pred[0, j, 0].cpu()
@@ -472,7 +453,7 @@ def plot_fig3(fiber, cfg, device, orbit: str, k: int, out_png: Path) -> None:
     a_ref = batch["a_ref"].to(device)
     one = fiber(obs, obs_rel, qrel, gid, obs_mask=obs_mask, abs_obs=None, a_ref=a_ref, query_views=None)
     if "view_preds" in one:
-        vp = one["view_preds"][0, 0]  # [K,1,H,W]
+        vp = one["view_preds"][0, 0]
         kshow = min(3, vp.size(0))
         for ki in range(kshow):
             imgs.append(vp[ki, 0].detach().cpu().clamp(0, 1))
@@ -494,7 +475,6 @@ def plot_fig3(fiber, cfg, device, orbit: str, k: int, out_png: Path) -> None:
     out_png.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_png, dpi=140)
     plt.close(fig)
-
 
 def main() -> None:
     ap = argparse.ArgumentParser()
@@ -530,7 +510,6 @@ def main() -> None:
     write_markdown(payload, outdir / "TABLE1.md")
     plot_fig2(splits, outdir / "fig2.png")
     print("wrote", outdir, flush=True)
-
 
 if __name__ == "__main__":
     main()

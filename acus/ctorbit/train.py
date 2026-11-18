@@ -1,4 +1,3 @@
-"""DDP train: query P(V̂) + obs reprojection + volume aux. Resume-safe."""
 from __future__ import annotations
 
 import argparse
@@ -25,7 +24,6 @@ from ctorbit.model import CTOrbitWorld
 from ctorbit.projector import affine_match, cone_project, geo_from_yaml
 from ctorbit.vis import plot_curves, prune_old_vis, save_case_panel
 
-
 def ssim_loss(pred: torch.Tensor, gt: torch.Tensor) -> torch.Tensor:
     pred, gt = pred.flatten(0, 1), gt.flatten(0, 1)
     c1, c2 = 0.01 ** 2, 0.03 ** 2
@@ -39,17 +37,14 @@ def ssim_loss(pred: torch.Tensor, gt: torch.Tensor) -> torch.Tensor:
     )
     return 1.0 - ssim.mean()
 
-
 def ssim_value(pred: torch.Tensor, gt: torch.Tensor) -> float:
     return float(1.0 - ssim_loss(pred, gt).detach())
-
 
 def psnr(pred: torch.Tensor, gt: torch.Tensor) -> float:
     return float(10.0 * torch.log10(1.0 / F.mse_loss(pred, gt).clamp_min(1e-10)))
 
-
 def slice_ssim_loss(pred: torch.Tensor, gt: torch.Tensor) -> torch.Tensor:
-    """pred/gt [B,1,H,W]."""
+
     c1, c2 = 0.01 ** 2, 0.03 ** 2
     mu_x = F.avg_pool2d(pred, 3, 1, 1)
     mu_y = F.avg_pool2d(gt, 3, 1, 1)
@@ -61,9 +56,8 @@ def slice_ssim_loss(pred: torch.Tensor, gt: torch.Tensor) -> torch.Tensor:
     )
     return 1.0 - ssim.mean()
 
-
 def vol_ssim_loss(pred: torch.Tensor, gt: torch.Tensor, n_slices: int = 8) -> torch.Tensor:
-    """Approximate volumetric SSIM via random ax/cor/sag 2D slices. pred/gt [B,1,D,H,W]."""
+
     b, _, d, h, w = pred.shape
     losses = []
     for _ in range(n_slices):
@@ -80,9 +74,8 @@ def vol_ssim_loss(pred: torch.Tensor, gt: torch.Tensor, n_slices: int = 8) -> to
         losses.append(slice_ssim_loss(p, g))
     return torch.stack(losses).mean()
 
-
 def sample_vol_slices(vol: torch.Tensor, n: int = 8) -> torch.Tensor:
-    """vol [B,1,D,H,W] -> [B*n,1,128,128] random orthoslices."""
+
     b, _, d, h, w = vol.shape
     outs = []
     for bi in range(b):
@@ -100,16 +93,13 @@ def sample_vol_slices(vol: torch.Tensor, n: int = 8) -> torch.Tensor:
             outs.append(F.interpolate(sl, size=(128, 128), mode="bilinear", align_corners=False))
     return torch.cat(outs, dim=0)
 
-
 def hf_l1(pred: torch.Tensor, gt: torch.Tensor) -> torch.Tensor:
     blur_p = F.avg_pool3d(pred, 3, 1, 1)
     blur_g = F.avg_pool3d(gt, 3, 1, 1)
     return F.l1_loss(pred - blur_p, gt - blur_g)
 
-
 def is_main() -> bool:
     return (not dist.is_initialized()) or dist.get_rank() == 0
-
 
 def resize_views(x: torch.Tensor, hw: int) -> torch.Tensor:
     b, v, c, h, w = x.shape
@@ -118,7 +108,6 @@ def resize_views(x: torch.Tensor, hw: int) -> torch.Tensor:
     y = F.interpolate(x.flatten(0, 1), size=(hw, hw), mode="bilinear", align_corners=False)
     return y.view(b, v, c, hw, hw)
 
-
 def latest_ckpt(ckpt_dir: Path) -> Path | None:
     last = ckpt_dir / "last.pt"
     if last.is_file():
@@ -126,9 +115,8 @@ def latest_ckpt(ckpt_dir: Path) -> Path | None:
     pts = sorted(ckpt_dir.glob("step_*.pt"), key=lambda p: p.stat().st_mtime)
     return pts[-1] if pts else None
 
-
 def gather_obs_query(batch: dict) -> tuple[torch.Tensor, torch.Tensor]:
-    """One acquired view, used as a query so the fiber must collapse onto it."""
+
     mask = batch["obs_mask"]
     views = batch["obs_views"]
     b, k = mask.shape
@@ -139,9 +127,8 @@ def gather_obs_query(batch: dict) -> tuple[torch.Tensor, torch.Tensor]:
     qrel = batch["obs_rel"].gather(1, idx.view(b, 1))
     return qv, qrel
 
-
 def fiber_split(pred: torch.Tensor, gt: torch.Tensor, scale: torch.Tensor, gap: torch.Tensor) -> dict[str, float]:
-    """90% Gaussian interval coverage and mean scale, split by angular gap."""
+
     z = 1.64485
     hit = ((pred - gt).abs() <= z * scale).float().mean(dim=(2, 3, 4))
     width = scale.mean(dim=(2, 3, 4))
@@ -162,12 +149,10 @@ def fiber_split(pred: torch.Tensor, gt: torch.Tensor, scale: torch.Tensor, gap: 
         "width_far": _mean(width, far),
     }
 
-
 def prune_ckpts(ckpt_dir: Path, keep: int = 2) -> None:
     pts = sorted(ckpt_dir.glob("step_*.pt"), key=lambda p: p.stat().st_mtime)
     for p in pts[:-keep]:
         p.unlink(missing_ok=True)
-
 
 @torch.no_grad()
 def run_eval(model, loader, device, cfg, vis_dir: Path, step: int, max_batches: int = 32):
@@ -318,7 +303,6 @@ def run_eval(model, loader, device, cfg, vis_dir: Path, step: int, max_batches: 
         outm["gate"] = "TIED_BASELINE"
     return outm
 
-
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default=str(ROOT / "configs/cbct.yaml"))
@@ -419,7 +403,7 @@ def main() -> None:
     enc_ids = set(id(p) for p in raw_m.encoder.parameters())
     p_enc = [p for p in raw_m.encoder.parameters() if p.requires_grad]
     p_rest = [p for p in model.parameters() if p.requires_grad and id(p) not in enc_ids]
-    # keep disc out of G optimizer when present
+
     if getattr(raw_m, "vol_disc", None) is not None:
         disc_ids = set(id(p) for p in raw_m.vol_disc.parameters())
         p_rest = [p for p in p_rest if id(p) not in disc_ids]
@@ -579,7 +563,7 @@ def main() -> None:
                     )
                     gt_c = resize_views(qv, hw)
                     l_col = (out_c["pred_query"] - gt_c).abs().mean() + out_c["scale"].mean()
-                # Soft 90% coverage: widen scale when the interval is too tight.
+
                 if float(cfg["loss"].get("lambda_cover", 0.0)) > 0:
                     z = 1.64485
                     slack = 8.0 * (z * out["scale"] - (pred_q - qgt).abs())
@@ -592,8 +576,7 @@ def main() -> None:
                 else pred_q.new_zeros(())
             )
             if use_world:
-                # Ray world: always supervise P_a(μ). Old BP path kept mix_w so the
-                # 15 dB blob could not overwrite near-angle 2D.
+
                 if str(cfg["model"].get("world_kind", "bp")) == "ray":
                     far_w = (0.6 + 1.8 * (out["gap_deg"] / 40.0).clamp(0, 1)).view_as(gap_w)
                     l_proj = ((out["pred_query_vol"] - qgt).abs() * far_w).mean()
@@ -636,7 +619,7 @@ def main() -> None:
                 if gan_on:
                     fake_s = sample_vol_slices(vol, n=int(cfg["loss"].get("gan_slices", 6)))
                     l_gan = torch.relu(1.0 - raw_m.vol_disc(fake_s)).mean()
-                # Keep V inside the fiber: match acquired views and land in p(x|a').
+
                 if float(cfg["loss"].get("lambda_vol_reproj", 0.0)) > 0 or float(cfg["loss"].get("lambda_vol_fiber", 0.0)) > 0:
                     gid = int(batch["geo_id"][0])
                     geo = geos["luna" if gid == 0 else "tooth"]
@@ -674,7 +657,7 @@ def main() -> None:
                     + float(cfg["loss"].get("lambda_vol_fiber", 0.0)) * l_vol_fiber
                 )
             if not torch.isfinite(loss):
-                # skip bad batch rather than poisoning GradScaler
+
                 opt.zero_grad(set_to_none=True)
                 if is_main() and step % cfg["train"]["log_every"] == 0:
                     print({"step": step, "skip_nonfinite": True}, flush=True)
@@ -685,7 +668,6 @@ def main() -> None:
         scaler.step(opt)
         scaler.update()
 
-        # discriminator step (slice PatchGAN); warm up after G has stabilized
         if use_vol and opt_d is not None and "volume" in out and gan_on and torch.isfinite(out["volume"]).all():
             gt = batch["gt_vol"]
             if gt.dim() == 4:
@@ -828,7 +810,6 @@ def main() -> None:
         print("done step", step)
     if world > 1:
         dist.destroy_process_group()
-
 
 if __name__ == "__main__":
     main()

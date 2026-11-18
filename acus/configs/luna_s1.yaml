@@ -1,4 +1,3 @@
-# OrbitRefine LUNA Stage-1: learnable orbit completion (no vol refine yet)
 model:
   encoder: mae
   mae_ckpt: pretrained/mae_pretrain_vit_base.pth
@@ -30,7 +29,6 @@ data:
   k_max: 12
   eval_k_min: 6
   eval_k_max: 12
-  # multi short arcs (not one long limited arc)
   use_multi_arc: true
   n_arcs_min: 2
   n_arcs_max: 3

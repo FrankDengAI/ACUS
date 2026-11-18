@@ -1,4 +1,3 @@
-"""Non-learned query-view baselines: nearest-neighbor copy and angular lerp."""
 from __future__ import annotations
 
 import math
@@ -6,16 +5,13 @@ import math
 import torch
 import torch.nn.functional as F
 
-
 def _circ_dist(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     d = (a - b + math.pi) % (2 * math.pi) - math.pi
     return d.abs()
 
-
 def psnr_torch(pred: torch.Tensor, gt: torch.Tensor) -> torch.Tensor:
     mse = F.mse_loss(pred, gt, reduction="none").flatten(2).mean(-1)
     return 10.0 * torch.log10(1.0 / mse.clamp_min(1e-10))
-
 
 def nearest_and_lerp(
     obs_views: torch.Tensor,
@@ -24,10 +20,10 @@ def nearest_and_lerp(
     obs_mask: torch.Tensor | None,
     out_hw: int,
 ) -> dict[str, torch.Tensor]:
-    """obs [B,K,1,H,W]; returns nn/lerp [B,Q,1,h,w] and min angular gap in degrees."""
+
     b, k, c, h, w = obs_views.shape
     q = query_rel.shape[1]
-    dist = _circ_dist(query_rel.unsqueeze(-1), obs_rel.unsqueeze(1))  # [B,Q,K]
+    dist = _circ_dist(query_rel.unsqueeze(-1), obs_rel.unsqueeze(1))
     if obs_mask is not None:
         dist = dist.masked_fill(obs_mask.unsqueeze(1) < 0.5, 1e6)
     d_sort, idx_sort = dist.sort(dim=-1)
@@ -56,10 +52,9 @@ def nearest_and_lerp(
     deg = d_sort[..., 0] * (180.0 / math.pi)
     return {"nn": nn_img, "lerp": lerp, "gap_deg": deg}
 
-
 def summarize_psnr(pred: torch.Tensor, gt: torch.Tensor, gap_deg: torch.Tensor) -> dict[str, float]:
-    """pred/gt [B,Q,1,H,W]; per-view PSNR then split near (<20°) / far (>=40°)."""
-    pv = psnr_torch(pred, gt)  # [B,Q]
+
+    pv = psnr_torch(pred, gt)
     out = {
         "psnr": float(pv.mean()),
         "psnr_near": float("nan"),

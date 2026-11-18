@@ -1,11 +1,9 @@
-"""Differentiable cone-beam projector (batched, keeps grad)."""
 from __future__ import annotations
 
 from typing import Any
 
 import torch
 import torch.nn.functional as F
-
 
 def geo_from_yaml(cfg: dict[str, Any]) -> dict[str, torch.Tensor]:
     p = cfg["projector"]
@@ -27,7 +25,6 @@ def geo_from_yaml(cfg: dict[str, Any]) -> dict[str, torch.Tensor]:
         ),
     }
 
-
 def cone_project(
     vol: torch.Tensor,
     angles: torch.Tensor,
@@ -35,11 +32,7 @@ def cone_project(
     n_samples: int = 96,
     out_hw: int | None = None,
 ) -> torch.Tensor:
-    """
-    vol: [B, 1, D, H, W] occupancy in [-aligned] grid_sample space
-    angles: [B, Q] radians
-    returns: [B, Q, 1, nv, nu]  (v flipped to match preprocess)
-    """
+
     b, q = angles.shape
     nv0, nu0 = int(geo["nv"]), int(geo["nu"])
     nv = out_hw or nv0
@@ -54,14 +47,14 @@ def cone_project(
 
     u = (torch.arange(nu, device=device, dtype=dtype) - (nu - 1) / 2.0) * dDet_u
     v = (torch.arange(nv, device=device, dtype=dtype) - (nv - 1) / 2.0) * dDet_v
-    vv, uu = torch.meshgrid(v, u, indexing="ij")  # [nv, nu]
+    vv, uu = torch.meshgrid(v, u, indexing="ij")
     ts = torch.linspace(0, 1, n_samples, device=device, dtype=dtype)
 
     outs = []
     for qi in range(q):
         ang = angles[:, qi]
         c, s = torch.cos(ang), torch.sin(ang)
-        src = torch.stack([DSO * s, -DSO * c, torch.zeros_like(c)], dim=-1)  # [B,3]
+        src = torch.stack([DSO * s, -DSO * c, torch.zeros_like(c)], dim=-1)
         det_c = torch.stack([-(DSD - DSO) * s, (DSD - DSO) * c, torch.zeros_like(c)], dim=-1)
         axis_u = torch.stack([c, s, torch.zeros_like(c)], dim=-1)
         axis_v = torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype).expand(b, 3)
@@ -85,9 +78,8 @@ def cone_project(
         dt = ((tmax - tmin).clamp(min=0) / max(n_samples - 1, 1)).clamp(min=0)
         line = (samp * valid[:, None, ..., None].to(dtype) * dt[:, None, ..., None]).sum(dim=-1)
         outs.append(line)
-    projs = torch.stack(outs, dim=1)  # [B,Q,1,nv,nu]
+    projs = torch.stack(outs, dim=1)
     return torch.flip(projs, dims=[-2])
-
 
 def sample_cone_rays(
     angles: torch.Tensor,
@@ -97,14 +89,7 @@ def sample_cone_rays(
     device,
     dtype,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Query cone-beam rays in the same frame as cone_project / preprocess.
 
-    angles: [B, Q] radians
-    returns:
-      pts   [B, Q, nv, nu, M, 3] in [-1, 1] volume coords
-      dt    [B, Q, nv, nu]       parametric step (same units as cone_project)
-      valid [B, Q, nv, nu]
-    """
     b, q = angles.shape
     nv0, nu0 = int(geo["nv"]), int(geo["nu"])
     nv = nu = int(out_hw)
@@ -145,7 +130,6 @@ def sample_cone_rays(
         valid_q.append(valid)
     return torch.stack(pts_q, 1), torch.stack(dt_q, 1), torch.stack(valid_q, 1)
 
-
 def world_to_uv(
     pts_norm: torch.Tensor,
     ang: torch.Tensor,
@@ -153,10 +137,7 @@ def world_to_uv(
     out_hw: int,
     flip_v: bool = True,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """pts_norm [B,N,3] in [-1,1] volume coords; ang [B] radians.
-    returns uv [B,N,2] in [-1,1] for grid_sample, valid [B,N].
-    flip_v matches cone_project's last-axis flip on stored projections.
-    """
+
     b, n, _ = pts_norm.shape
     nv0, nu0 = int(geo["nv"]), int(geo["nu"])
     nv = nu = int(out_hw)
@@ -192,12 +173,10 @@ def world_to_uv(
     uv = torch.stack([u_n, v_n], dim=-1)
     return uv, valid
 
-
 def voxel_centers(res: int, device, dtype) -> torch.Tensor:
     t = torch.linspace(-1, 1, res, device=device, dtype=dtype)
     zz, yy, xx = torch.meshgrid(t, t, t, indexing="ij")
     return torch.stack([xx, yy, zz], dim=-1).view(1, -1, 3)
-
 
 def backproject(
     views: torch.Tensor,
@@ -206,10 +185,7 @@ def backproject(
     res: int,
     mask: torch.Tensor | None = None,
 ) -> torch.Tensor:
-    """Unfiltered cone-beam backprojection.
-    views [B,K,C,H,W] (C=1 intensity or C=feat); angles [B,K]
-    returns [B,C,R,R,R]
-    """
+
     b, k, ch, h, w = views.shape
     pts = voxel_centers(res, views.device, views.dtype).expand(b, -1, -1)
     acc = views.new_zeros(b, ch, res * res * res)
@@ -240,9 +216,8 @@ def backproject(
     vol = acc / cnt.clamp_min(1e-4)
     return vol.view(b, ch, res, res, res)
 
-
 def ramp_filter_u(views: torch.Tensor) -> torch.Tensor:
-    """Ram-Lak (+ Hamming) along detector u. views [B,K,1,H,W] in [0,1] (X-ray)."""
+
     b, k, c, h, w = views.shape
     att = (1.0 - views).clamp(0, 1).reshape(-1, w)
     freq = torch.fft.rfftfreq(w, device=views.device, dtype=torch.float32)
@@ -252,7 +227,6 @@ def ramp_filter_u(views: torch.Tensor) -> torch.Tensor:
     y = torch.fft.irfft(torch.fft.rfft(att.float(), dim=-1) * kernel, n=w, dim=-1)
     return y.to(dtype=views.dtype).view(b, k, c, h, w)
 
-
 def fdk_backproject(
     views: torch.Tensor,
     angles: torch.Tensor,
@@ -260,25 +234,23 @@ def fdk_backproject(
     res: int,
     mask: torch.Tensor | None = None,
 ) -> torch.Tensor:
-    """Ramp-filtered cone-beam BP. Returns [B,1,R,R,R] (not intensity-normalized)."""
+
     hw = min(int(views.shape[-1]), max(int(res), 128))
     if views.shape[-1] != hw:
         v = F.interpolate(views.flatten(0, 1), size=hw, mode="bilinear", align_corners=False)
         views = v.view(views.size(0), views.size(1), 1, hw, hw)
     return backproject(ramp_filter_u(views), angles, geo, res, mask)
 
-
 def unit_range(vol: torch.Tensor) -> torch.Tensor:
-    """Per-sample 2–98 percentile to [0,1]. vol [B,1,D,H,W]."""
+
     b = vol.size(0)
     flat = vol.reshape(b, -1).float()
     lo = torch.quantile(flat, 0.02, dim=1).view(b, 1, 1, 1, 1)
     hi = torch.quantile(flat, 0.98, dim=1).view(b, 1, 1, 1, 1)
     return ((vol - lo) / (hi - lo).clamp_min(1e-6)).clamp(0, 1)
 
-
 def affine_match(pred: torch.Tensor, gt: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
-    """Least-squares a*pred+b ≈ gt. cone_project line integrals vs stored views."""
+
     x = pred.reshape(-1).float()
     y = gt.reshape(-1).float()
     if mask is not None:
