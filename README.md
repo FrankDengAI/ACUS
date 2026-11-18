@@ -1,20 +1,21 @@
 <p align="center">
-  <img src="assets/hero.gif" alt="ACUS" width="100%">
+  <img src="assets/Fig1.png" alt="Incomplete-view CT and ACUS" width="78%">
 </p>
 
-<h2 align="center">An interval for the angle that was not acquired.</h2>
+<h3 align="center">An interval for the angle that was not acquired.</h3>
 
 <p align="center">
-<code>3.29 × scale</code> + <code>20 × exceedance</code>
+<code>3.29 × scale</code> + <code>20 × exceedance</code><br>
+Width follows the gap. A miss is charged again. A static scale fails far away.
 </p>
 
-A held-out projection is scored by its distance to the nearest acquired view.
-The interval is a nominal 90% band. Width is charged. Pixels outside the band are charged again.
-A single residual scale does not cover far angles. A learned scale opens with the gap.
+<p align="center">
+  <img src="assets/Fig2.png" alt="Model and training" width="100%">
+</p>
 
 ---
 
-## Result
+## Numbers
 
 Forty cases per anatomy, eight acquired views. Near is under 20°. Far is at least 40°.
 
@@ -25,35 +26,29 @@ Forty cases per anatomy, eight acquired views. Near is under 20°. Far is at lea
 | Near scale | 0.018 | 0.023 | 0.024 | 0.027 |
 
 <p align="center">
-  <img src="assets/official_bins.png" alt="Scale and coverage" width="100%">
+  <img src="assets/official_bins.png" alt="Scale and coverage" width="72%">
 </p>
+
+Chest sparse scale rises from 0.014 to 0.088. Coverage stays between 0.75 and 0.93.
+
+<p align="center">
+  <img src="assets/chest_interval.png" alt="Chest" width="58%">
+  &nbsp;
+  <img src="assets/dental_interval.png" alt="Dental" width="58%">
+</p>
+
+<p align="center">One chest query and one dental query. Columns are image, scale, absolute residual, and pixels outside the interval. These two cases are not the forty-case mean.</p>
 
 ---
 
-## Boards
-
-<p align="center">
-  <img src="assets/chest_interval.png" alt="Chest" width="92%">
-</p>
-
-<p align="center">Chest, one mid-gap query. A constant scale is a flat field. The learned scale has structure. One case, not the forty-case mean.</p>
-
-<p align="center">
-  <img src="assets/dental_interval.png" alt="Dental" width="92%">
-</p>
-
-<p align="center">Dental, same columns: image, scale, absolute residual, pixels outside the interval.</p>
-
----
-
-## Layout
+## Run
 
 ```text
-acus/ctorbit/train.py     training step
-acus/ctorbit/model.py     ScaleHead and the forward pass
-acus/eval_fiber_main.py   held-out near/far evaluation
-acus/acus_core.py         score and the two losses, without the trainer
-acus/configs/              chest and dental settings
+acus/ctorbit/train.py      training step
+acus/ctorbit/model.py      scale head and forward pass
+acus/eval_fiber_main.py    held-out near and far evaluation
+acus/acus_core.py          score and the two losses
+acus/configs/               chest and dental settings
 ```
 
 ```bash
@@ -63,8 +58,6 @@ python -m ctorbit.train --config configs/luna_fiber.yaml
 python eval_fiber_main.py --fiber_cfg configs/luna_fiber.yaml --fiber_ckpt chest.pt --point_cfg configs/luna_s1.yaml --point_ckpt chest_point.pt --outdir outputs/chest
 ```
 
-`luna_*` is chest. `tooth_*` is dental. Set `data.roots` in the yaml to the local projection folders. The frozen encoder path is `model.mae_ckpt`. Checkpoints are not in this repository.
-
----
+`luna_*` is chest. `tooth_*` is dental. Point `data.roots` and `model.mae_ckpt` at local files. Checkpoints are not in this repository.
 
 <p align="center">MIT</p>
